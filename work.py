@@ -3,6 +3,48 @@ import time
 from bs4 import BeautifulSoup as BS
 from urllib import request as ulrlib2
 from selenium import webdriver
+import boto3
+from botocore.exceptions import ClientError
+
+
+def send_email(sender, receiver, email_body, subject):
+    CHARSET = "UTF-8"
+    client = boto3.client('ses', region_name="us-east-1")
+
+    html = f'''<html>
+<head></head>
+<body>
+  <h1>Something changed</h1>
+  <p>{email_body}</p>
+</body>
+</html>'''
+# Try to send the email.
+    try:
+        response = client.send_email(
+            Destination={
+                'ToAddresses': [
+                    receiver,
+                ],
+            },
+            Message={
+                'Body': {
+                    'Html': {
+                        'Charset': CHARSET,
+                        'Data': html
+                    },
+                },
+                'Subject': {
+                    'Charset': CHARSET,
+                    'Data': subject
+                },
+            },
+            Source=sender
+        )
+    except ClientError as e:
+        print(e.response['Error']['Message'])
+    else:
+        print("Email sent! Message ID:"),
+        print(response['MessageId'])
 
 
 class Unit:
@@ -141,8 +183,6 @@ def getDataURL(pageUrl):
 
 
 def entry_main(a1, a2):
-    print(a1)
-    print(a2)
     url = "https://www.avanasunnyvale.com/floor-plans"
     dataURL = getDataURL(url)
     list = get_parse_data(dataURL)
@@ -151,8 +191,8 @@ def entry_main(a1, a2):
     l1.append(obj)
     m1, m2, m3 = compare_data(list, l1)
     t = get_text(m1, m2, m3)
-    print(t)
+    send_email("ps.alchemist@gmail.com", "apurwaj2@gmail.com", t, "test email")
 
 
 if __name__ == "__main__":
-    entry_main()
+    entry_main("1", "2")
