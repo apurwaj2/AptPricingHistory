@@ -18,12 +18,9 @@ RUN rm stable-headless-chromium-amazonlinux-2017-03.zip chromedriver_linux64.zip
 
 RUN chmod 755 /bin/chromedriver
 
-COPY ~/Downloads/ec2_micro_avana.pem ${LAMBDA_TASK_ROOT}
-COPY entrypoiny.sh ${LAMBDA_TASK_ROOT}
-
 # Copy function code
 COPY work.py ${LAMBDA_TASK_ROOT}
 
 
 # Set the CMD to your handler (could also be done as a parameter override outside of the Dockerfile)
-CMD ./entrypoiny.sh
+CMD [ "work.entry_main" ]
