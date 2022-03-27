@@ -5,6 +5,22 @@ from urllib import request as ulrlib2
 from selenium import webdriver
 import boto3
 from botocore.exceptions import ClientError
+import sqlalchemy as db
+from sqlalchemy import Column, DateTime, Float, SmallInteger, String, TIMESTAMP
+from sqlalchemy.orm import Session
+from sqlalchemy.orm import declarative_base
+from datetime import datetime
+
+# declarative base class
+Base = declarative_base()
+
+
+def connect_db():
+    engine = db.create_engine(
+        'mysql+pymysql://admin:admin123@127.0.0.1:3306/apartments_pricing')
+    connection = engine.connect()
+    metadata = db.MetaData()
+    return(connection, engine, metadata)
 
 
 def send_email(sender, receiver, email_body, subject):
@@ -47,16 +63,24 @@ def send_email(sender, receiver, email_body, subject):
         print(response['MessageId'])
 
 
-class Unit:
+class Unit(Base):
     # A simple class
     # attribute
-    def __init__(self, unit_number, price, bedroom, available_on, lease_term, timestamp):
+    __tablename__ = 'price_log'
+    unit_number = Column('unit_no', String(10), primary_key=True)
+    price = Column('price', Float)
+    bedroom = Column('bedrooms', SmallInteger)
+    available_on = Column('availability', String(45))
+    lease_term = Column('lease_term', String(45))
+    timestamp = Column('timestamp', TIMESTAMP, primary_key=True,
+                       nullable=False, default=datetime.now())
+
+    def __init__(self, unit_number, price, bedroom, available_on, lease_term):
         self.unit_number = unit_number
         self.price = price
         self.bedroom = bedroom
         self.available_on = available_on
         self.lease_term = lease_term
-        self.timestamp = timestamp
 
     def __hash__(self):
         return hash(self.unit_number)
@@ -104,7 +128,7 @@ def get_parse_data(url):
 
     for item in json_data['data']['units']:
         u = Unit(item['unit_number'], item['price'], item['filters']['custom_16512'][1], item['display_available_on'],
-                 item['display_lease_term'], time.time())
+                 item['display_lease_term'])
         unit_list.append(u)
 
     return unit_list
@@ -167,9 +191,9 @@ def getDataURL(pageUrl):
     options.add_argument(
         '"user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.100 Safari/537.36"')
 
-    options.binary_location = "/bin/headless-chromium"
+    options.binary_location = "/Users/shreyas/workspace/AptPricingHistory/bin/headless-chromium"
     browser = webdriver.Chrome(
-        executable_path="/bin/chromedriver", options=options)
+        executable_path="/Users/shreyas/workspace/AptPricingHistory/bin/chromedriver", options=options)
     browser.get(embedUrl)
     retries = 10
     data = None
@@ -182,16 +206,30 @@ def getDataURL(pageUrl):
     return data["sightmaps"][0]["href"]
 
 
+def insert_data_in_log(list, session):
+    for d in list:
+        session.add(d)
+    session.commit()
+
+
 def entry_main(a1, a2):
+    c, e, m = connect_db()
+    session = Session(e)
     url = "https://www.avanasunnyvale.com/floor-plans"
     dataURL = getDataURL(url)
     list = get_parse_data(dataURL)
-    l1 = []
-    obj = Unit("912", 2329, 3, "Available Now", "15 Months", time.time())
-    l1.append(obj)
-    m1, m2, m3 = compare_data(list, l1)
-    t = get_text(m1, m2, m3)
-    send_email("ps.alchemist@gmail.com", "apurwaj2@gmail.com", t, "test email")
+    insert_data_in_log(list, session)
+    price_log = db.Table('price_log', m, autoload=True, autoload_with=e)
+    query = db.select([price_log])
+    result_proxy = c.execute(query)
+    result_set = result_proxy.fetchall()
+    print(result_set)
+    # l1 = []
+    # obj = Unit("912", 2329, 3, "Available Now", "15 Months")
+    # l1.append(obj)
+    # m1, m2, m3 = compare_data(list, l1)
+    # t = get_text(m1, m2, m3)
+    # send_email("ps.alchemist@gmail.com", "apurwaj2@gmail.com", t, "test email")
 
 
 if __name__ == "__main__":
