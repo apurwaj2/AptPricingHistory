@@ -34,7 +34,7 @@ def send_email(sender, receiver, email_body, subject):
   <p>{email_body}</p>
 </body>
 </html>'''
-# Try to send the email.
+    # Try to send the email.
     try:
         response = client.send_email(
             Destination={
@@ -174,7 +174,7 @@ def getEmbedURL(pageUrl):
     page = ulrlib2.urlopen(pageUrl).read()
     soup = BS(page)
     return (soup.find_all("div", {"class": "displayTextBlockText"})[
-          0].find_all("iframe")[0]['src'])
+        0].find_all("iframe")[0]['src'])
 
 
 def getDataURL(pageUrl):
@@ -211,6 +211,11 @@ def insert_data_in_log(list, session):
         session.add(d)
     session.commit()
 
+def get_data_from_db(current_price, c):
+    query = db.select([current_price])
+    result_proxy = c.execute(query)
+    result_set = result_proxy.fetchall()
+    return result_set
 
 def entry_main(a1, a2):
     c, e, m = connect_db()
@@ -219,18 +224,11 @@ def entry_main(a1, a2):
     dataURL = getDataURL(url)
     list = get_parse_data(dataURL)
     insert_data_in_log(list, session)
-    price_log = db.Table('price_log', m, autoload=True, autoload_with=e)
-    query = db.select([price_log])
-    result_proxy = c.execute(query)
-    result_set = result_proxy.fetchall()
-    print(result_set)
-    # l1 = []
-    # obj = Unit("912", 2329, 3, "Available Now", "15 Months")
-    # l1.append(obj)
-    # m1, m2, m3 = compare_data(list, l1)
-    # t = get_text(m1, m2, m3)
-    # send_email("ps.alchemist@gmail.com", "apurwaj2@gmail.com", t, "test email")
-
+    current_price = db.Table('current_price', m, autoload=True, autoload_with=e)
+    current_set = get_data_from_db(current_price, c)
+    m1, m2, m3 = compare_data(list, current_set)
+    t = get_text(m1, m2, m3)
+    send_email("ps.alchemist@gmail.com", "apurwaj2@gmail.com", t, "test email")
 
 if __name__ == "__main__":
     entry_main("1", "2")
