@@ -36,7 +36,7 @@ def send_email(sender, receiver, email_body, subject):
     html = f'''<html>
 <head></head>
 <body>
-  <h1>Something changed</h1>
+  <h1>Avana Updates</h1>
   {email_body}
 </body>
 </html>'''
@@ -299,9 +299,15 @@ def entry_main(a1, a2):
     insert_data_in_current(m1, m2, m3, session)
     t = get_text(m1, m2, m3)
     if t:
+        subject = "Something Changed"
+        if(a1["daily"]):
+            subject = "Daily Report"
         send_email("ps.alchemist@gmail.com",
-                   "apurwaj2@gmail.com", t, "Something changed")
+                   "apurwaj2@gmail.com", t, subject)
     else:
+        if(a1["daily"]):
+            send_email("ps.alchemist@gmail.com",
+                       "apurwaj2@gmail.com", "Nothing Changed", "Daily Report")
         print("Nothing changed. Not sending any email")
 
 
