@@ -6,11 +6,12 @@ from selenium import webdriver
 import boto3
 from botocore.exceptions import ClientError
 import sqlalchemy as db
-from sqlalchemy import Column, DateTime, Float, SmallInteger, String, TIMESTAMP, Boolean
+from sqlalchemy import Column, Float, SmallInteger, String, TIMESTAMP, Boolean
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import declarative_base
-from datetime import datetime
 import os
+
+# from webdriver_manager.chrome import ChromeDriverManager
 
 # declarative base class
 Base = declarative_base()
@@ -36,7 +37,7 @@ def send_email(sender, receiver, email_body, subject):
 <head></head>
 <body>
   <h1>Something changed</h1>
-  <p>{email_body}</p>
+  {email_body}
 </body>
 </html>'''
     # Try to send the email.
@@ -75,8 +76,33 @@ class CurrentUnit(Base):
     bedroom = Column('bedrooms', SmallInteger)
     available_on = Column('availability', String(45))
     lease_term = Column('lease_term', String(45))
-    timestamp = Column('timestamp', TIMESTAMP, nullable=False)
+    timestamp = Column('timestamp', TIMESTAMP)
     sold = Column('sold', Boolean)
+
+    def __init__(self, unit_number, price, bedroom, available_on, lease_term, sold):
+        self.unit_number = unit_number
+        self.price = price
+        self.bedroom = bedroom
+        self.available_on = available_on
+        self.lease_term = lease_term
+        self.sold = sold
+
+    def __hash__(self):
+        return hash(self.unit_number)
+
+    def __eq__(self, other):
+        if not isinstance(other, type(self)):
+            return NotImplemented
+        return self.unit_number == other.unit_number
+
+    def text_data(self):
+        return f'''
+        <p>Bedrooms: {self.bedroom}</p>
+        <p>Unit no: {self.unit_number} </p>
+        <p>Price: {self.price}</p>
+        <p>Lease term: {self.lease_term}</p>
+        <p>Available on: {self.available_on}</p>
+        '''
 
 
 class Unit(Base):
@@ -157,31 +183,33 @@ def compare_data(old_list, new_list):
     for item1 in new_list:
         if item1 in old_set:
             for e in old_set:
-                if e.unit_number == item1.unit_number and item1.price != e.price or item1.available_on != e.available_on or item1.lease_term != e.lease_term:
+                if (e.unit_number == item1.unit_number) and (item1.price != e.price or item1.available_on != e.available_on or item1.lease_term != e.lease_term):
                     updated_apartments.append(item1)
+                    break
         else:
             new_apartments.append(item1)
-
     for item2 in old_list:
-        if item2['sold'] == 0 and item2 not in new_set:
-            item2['sold'] = 1
+        if item2.sold == 0 and item2 not in new_set:
+            item2.sold = 1
             sold_out_apartments.append(item2)
 
     return new_apartments, updated_apartments, sold_out_apartments
 
 
 def get_text(l1, l2, l3):
-    result = "New Apartments:\n"
-    for i in l1:
-        result += i.text_data()
-    result += "\n\n"
-    result += "Updated Apartments:\n"
-    for i in l2:
-        result += i.text_data()
-    result += "\n\n"
-    result += "Sold out Apartments:\n"
-    for i in l3:
-        result += i.text_data()
+    result = ""
+    if l1 or l2 or l3:
+        result = "<h3>New Apartments Added: </h3>\n"
+        for i in l1:
+            result += i.text_data()
+        result += "\n\n"
+        result += "<h3>Updated Apartments:</h3>\n"
+        for i in l2:
+            result += i.text_data()
+        result += "\n\n"
+        result += "<h3>Sold out Apartments: </h3>\n"
+        for i in l3:
+            result += i.text_data()
     return result
 
 
@@ -209,6 +237,8 @@ def getDataURL(pageUrl):
     options.binary_location = "/bin/headless-chromium"
     browser = webdriver.Chrome(
         executable_path="/bin/chromedriver", options=options)
+    # browser = webdriver.Chrome(
+    #     ChromeDriverManager().install(), options=options)
     browser.get(embedUrl)
     retries = 10
     data = None
@@ -240,18 +270,15 @@ def insert_data_in_current(m1, m2, m3, session):
     session.commit()
 
 
-def get_data_from_db(current_price, c):
-    query = db.select([current_price])
-    result_proxy = c.execute(query)
-    result_set = result_proxy.fetchall()
-    return result_set
+def get_data_from_db(session):
+    return session.query(CurrentUnit).all()
 
 
 def convert_to_current_unit(list):
     new_list = []
     for item in list:
-        cu = CurrentUnit(item['unit_number'], item['price'], item['filters']['custom_16512'][1], item['display_available_on'],
-                         item['display_lease_term'], item['timestamp'], 0)
+        cu = CurrentUnit(item.unit_number, item.price, item.bedroom, item.available_on,
+                         item.lease_term, 0)
         new_list.append(cu)
 
     return new_list
@@ -260,18 +287,22 @@ def convert_to_current_unit(list):
 def entry_main(a1, a2):
     c, e, m = connect_db()
     session = Session(e)
+    print(a1)
+    print(a2)
     url = "https://www.avanasunnyvale.com/floor-plans"
     dataURL = getDataURL(url)
     list = get_parse_data(dataURL)
-    insert_data_in_log(list, session)
     new_list = convert_to_current_unit(list)
-    current_price = db.Table(
-        'current_price', m, autoload=True, autoload_with=e)
-    current_set = get_data_from_db(current_price, c)
+    insert_data_in_log(list, session)
+    current_set = get_data_from_db(session)
     m1, m2, m3 = compare_data(current_set, new_list)
     insert_data_in_current(m1, m2, m3, session)
     t = get_text(m1, m2, m3)
-    send_email("ps.alchemist@gmail.com", "apurwaj2@gmail.com", t, "test email")
+    if t:
+        send_email("ps.alchemist@gmail.com",
+                   "apurwaj2@gmail.com", t, "Something changed")
+    else:
+        print("Nothing changed. Not sending any email")
 
 
 if __name__ == "__main__":
