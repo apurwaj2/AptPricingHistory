@@ -6,18 +6,23 @@ from selenium import webdriver
 import boto3
 from botocore.exceptions import ClientError
 import sqlalchemy as db
-from sqlalchemy import Column, DateTime, Float, SmallInteger, String, TIMESTAMP, TinyInteger
+from sqlalchemy import Column, DateTime, Float, SmallInteger, String, TIMESTAMP, Boolean
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import declarative_base
 from datetime import datetime
+import os
 
 # declarative base class
 Base = declarative_base()
 
 
 def connect_db():
+    mysql_endpoint = os.environ.get('mysql_endpoint')
+    username = os.environ.get('username')
+    password = os.environ.get('password')
+    db_name = os.environ.get('db_name')
     engine = db.create_engine(
-        'mysql+pymysql://admin:admin123@127.0.0.1:3306/apartments_pricing')
+        f'mysql+pymysql://{username}:{password}@{mysql_endpoint}:3306/{db_name}')
     connection = engine.connect()
     metadata = db.MetaData()
     return(connection, engine, metadata)
@@ -71,7 +76,8 @@ class CurrentUnit(Base):
     available_on = Column('availability', String(45))
     lease_term = Column('lease_term', String(45))
     timestamp = Column('timestamp', TIMESTAMP, nullable=False)
-    sold = Column('sold', TinyInteger)
+    sold = Column('sold', Boolean)
+
 
 class Unit(Base):
     __tablename__ = 'price_log'
@@ -80,7 +86,8 @@ class Unit(Base):
     bedroom = Column('bedrooms', SmallInteger)
     available_on = Column('availability', String(45))
     lease_term = Column('lease_term', String(45))
-    timestamp = Column('timestamp', TIMESTAMP, primary_key=True, nullable=False)
+    timestamp = Column('timestamp', TIMESTAMP,
+                       primary_key=True, nullable=False)
 
     def __init__(self, unit_number, price, bedroom, available_on, lease_term):
         self.unit_number = unit_number
@@ -199,9 +206,9 @@ def getDataURL(pageUrl):
     options.add_argument(
         '"user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_14_6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/76.0.3809.100 Safari/537.36"')
 
-    options.binary_location = "/Users/shreyas/workspace/AptPricingHistory/bin/headless-chromium"
+    options.binary_location = "/bin/headless-chromium"
     browser = webdriver.Chrome(
-        executable_path="/Users/shreyas/workspace/AptPricingHistory/bin/chromedriver", options=options)
+        executable_path="/bin/chromedriver", options=options)
     browser.get(embedUrl)
     retries = 10
     data = None
@@ -219,7 +226,8 @@ def insert_data_in_log(list, session):
         session.add(d)
     session.commit()
 
-def insert_data_in_current(m1,m2,m3, session):
+
+def insert_data_in_current(m1, m2, m3, session):
     for d in m1:
         session.add(d)
 
@@ -238,14 +246,16 @@ def get_data_from_db(current_price, c):
     result_set = result_proxy.fetchall()
     return result_set
 
+
 def convert_to_current_unit(list):
     new_list = []
     for item in list:
         cu = CurrentUnit(item['unit_number'], item['price'], item['filters']['custom_16512'][1], item['display_available_on'],
-             item['display_lease_term'], item['timestamp'], 0)
+                         item['display_lease_term'], item['timestamp'], 0)
         new_list.append(cu)
 
     return new_list
+
 
 def entry_main(a1, a2):
     c, e, m = connect_db()
@@ -255,12 +265,14 @@ def entry_main(a1, a2):
     list = get_parse_data(dataURL)
     insert_data_in_log(list, session)
     new_list = convert_to_current_unit(list)
-    current_price = db.Table('current_price', m, autoload=True, autoload_with=e)
+    current_price = db.Table(
+        'current_price', m, autoload=True, autoload_with=e)
     current_set = get_data_from_db(current_price, c)
     m1, m2, m3 = compare_data(current_set, new_list)
-    insert_data_in_current(m1,m2,m3,session)
+    insert_data_in_current(m1, m2, m3, session)
     t = get_text(m1, m2, m3)
     send_email("ps.alchemist@gmail.com", "apurwaj2@gmail.com", t, "test email")
+
 
 if __name__ == "__main__":
     entry_main("1", "2")
