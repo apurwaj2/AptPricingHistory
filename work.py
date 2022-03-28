@@ -6,7 +6,7 @@ from selenium import webdriver
 import boto3
 from botocore.exceptions import ClientError
 import sqlalchemy as db
-from sqlalchemy import Column, DateTime, Float, SmallInteger, String, TIMESTAMP
+from sqlalchemy import Column, DateTime, Float, SmallInteger, String, TIMESTAMP, TinyInteger
 from sqlalchemy.orm import Session
 from sqlalchemy.orm import declarative_base
 from datetime import datetime
@@ -63,17 +63,24 @@ def send_email(sender, receiver, email_body, subject):
         print(response['MessageId'])
 
 
+class CurrentUnit(Base):
+    __tablename__ = 'current_price'
+    unit_number = Column('unit_no', String(10), primary_key=True)
+    price = Column('price', Float)
+    bedroom = Column('bedrooms', SmallInteger)
+    available_on = Column('availability', String(45))
+    lease_term = Column('lease_term', String(45))
+    timestamp = Column('timestamp', TIMESTAMP, nullable=False)
+    sold = Column('sold', TinyInteger)
+
 class Unit(Base):
-    # A simple class
-    # attribute
     __tablename__ = 'price_log'
     unit_number = Column('unit_no', String(10), primary_key=True)
     price = Column('price', Float)
     bedroom = Column('bedrooms', SmallInteger)
     available_on = Column('availability', String(45))
     lease_term = Column('lease_term', String(45))
-    timestamp = Column('timestamp', TIMESTAMP, primary_key=True,
-                       nullable=False, default=datetime.now())
+    timestamp = Column('timestamp', TIMESTAMP, primary_key=True, nullable=False)
 
     def __init__(self, unit_number, price, bedroom, available_on, lease_term):
         self.unit_number = unit_number
@@ -149,7 +156,8 @@ def compare_data(old_list, new_list):
             new_apartments.append(item1)
 
     for item2 in old_list:
-        if item2 not in new_set:
+        if item2['sold'] == 0 and item2 not in new_set:
+            item2['sold'] = 1
             sold_out_apartments.append(item2)
 
     return new_apartments, updated_apartments, sold_out_apartments
@@ -211,11 +219,33 @@ def insert_data_in_log(list, session):
         session.add(d)
     session.commit()
 
+def insert_data_in_current(m1,m2,m3, session):
+    for d in m1:
+        session.add(d)
+
+    for d in m2:
+        session.merge(d)
+
+    for d in m3:
+        session.merge(d)
+
+    session.commit()
+
+
 def get_data_from_db(current_price, c):
     query = db.select([current_price])
     result_proxy = c.execute(query)
     result_set = result_proxy.fetchall()
     return result_set
+
+def convert_to_current_unit(list):
+    new_list = []
+    for item in list:
+        cu = CurrentUnit(item['unit_number'], item['price'], item['filters']['custom_16512'][1], item['display_available_on'],
+             item['display_lease_term'], item['timestamp'], 0)
+        new_list.append(cu)
+
+    return new_list
 
 def entry_main(a1, a2):
     c, e, m = connect_db()
@@ -224,9 +254,11 @@ def entry_main(a1, a2):
     dataURL = getDataURL(url)
     list = get_parse_data(dataURL)
     insert_data_in_log(list, session)
+    new_list = convert_to_current_unit(list)
     current_price = db.Table('current_price', m, autoload=True, autoload_with=e)
     current_set = get_data_from_db(current_price, c)
-    m1, m2, m3 = compare_data(list, current_set)
+    m1, m2, m3 = compare_data(current_set, new_list)
+    insert_data_in_current(m1,m2,m3,session)
     t = get_text(m1, m2, m3)
     send_email("ps.alchemist@gmail.com", "apurwaj2@gmail.com", t, "test email")
 
